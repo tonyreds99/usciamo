@@ -235,6 +235,7 @@
     <div class="ticket">
       <p class="step-label" style="margin:0">Ci vediamo</p>
       <p class="when" id="whenText">—</p>
+      <p id="whenSub"></p>
       <p id="doneNote">Ti scrivo io per il posto. Vestiti come ti pare, sei già a posto così.</p>
     </div>
     <div class="send">
@@ -414,27 +415,48 @@ yesBtn.addEventListener('click', () => {
   scrollTo(0, 0); shower();
 });
 
-/* i prossimi giorni, con i nomi veri */
+/* i giorni si ricalcolano a ogni apertura: valgono sempre da domani in avanti */
 const days = document.getElementById('days');
-const fmtChip = new Intl.DateTimeFormat('it-IT', {weekday:'long', day:'numeric'});
-const fmtLong = new Intl.DateTimeFormat('it-IT', {weekday:'long', day:'numeric', month:'long'});
-const today = new Date(); today.setHours(0,0,0,0);
+const fmtWeekday = new Intl.DateTimeFormat('it-IT', {weekday:'long'});
+const fmtMonth   = new Intl.DateTimeFormat('it-IT', {month:'short'});
+const fmtLong    = new Intl.DateTimeFormat('it-IT', {weekday:'long', day:'numeric', month:'long'});
 
-for (let i = 1; i <= 5; i++){
-  const d = new Date(today); d.setDate(today.getDate() + i);
-  const parts = fmtChip.format(d).split(' ');
+const now = new Date();
+const today = new Date(now); today.setHours(0, 0, 0, 0);
+
+/* la data del calendario locale: toISOString() darebbe il giorno prima, essendo UTC */
+function isoLocal(d){
+  return d.getFullYear() + '-' +
+         String(d.getMonth() + 1).padStart(2, '0') + '-' +
+         String(d.getDate()).padStart(2, '0');
+}
+function cap(t){ return t.charAt(0).toUpperCase() + t.slice(1); }
+function addDays(n){ const d = new Date(today); d.setDate(today.getDate() + n); return d; }
+
+function dayChip(iso, top, main){
   const b = document.createElement('button');
-  b.className = 'chip'; b.type = 'button'; b.setAttribute('aria-pressed', 'false');
-  b.dataset.iso = d.toISOString().slice(0, 10);
-  b.innerHTML = '<small>' + (i === 1 ? 'Domani' : parts[0]) + '</small>' +
-                (i === 1 ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : parts[1] + ' ' +
-                 new Intl.DateTimeFormat('it-IT', {month:'short'}).format(d));
+  b.className = 'chip'; b.type = 'button';
+  b.setAttribute('aria-pressed', 'false');
+  b.dataset.iso = iso;
+  const s = document.createElement('small'); s.textContent = top;
+  b.append(s, document.createTextNode(main));
   days.appendChild(b);
+}
+
+/* stasera la propongo solo se apre la pagina con ancora il tempo di organizzarsi */
+const tonightOk = now.getHours() < 17;
+if (tonightOk) dayChip(isoLocal(today), 'Oggi', 'Stasera');
+
+for (let i = 1; i <= (tonightOk ? 4 : 5); i++){
+  const d = addDays(i), wd = fmtWeekday.format(d);
+  dayChip(isoLocal(d),
+          i === 1 ? 'Domani' : wd,
+          i === 1 ? cap(wd) : d.getDate() + ' ' + fmtMonth.format(d).replace('.', ''));
 }
 
 const dateFree = document.getElementById('dateFree');
 const timeFree = document.getElementById('timeFree');
-dateFree.min = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+dateFree.min = isoLocal(today);
 
 function selectIn(container, el){
   container.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c === el ? 'true' : 'false'));
@@ -467,18 +489,27 @@ function refresh(){
   confirm.textContent = ready ? 'È deciso' : (chosenDate ? 'Manca l’ora' : 'Scegli giorno e ora');
 }
 
-function prettyDate(iso){
+/* "venerdì 11 settembre" */
+function fullDate(iso){
   const [y, m, d] = iso.split('-').map(Number);
-  const s = fmtLong.format(new Date(y, m - 1, d));
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return fmtLong.format(new Date(y, m - 1, d));
+}
+/* "stasera" o "domani" quando è il caso, altrimenti la data per intero */
+function niceDate(iso){
+  if (iso === isoLocal(today))  return 'stasera';
+  if (iso === isoLocal(addDays(1))) return 'domani';
+  return fullDate(iso);
 }
 
 confirm.addEventListener('click', () => {
-  const pretty = prettyDate(chosenDate);
+  const nice = niceDate(chosenDate), full = fullDate(chosenDate);
   plan.hidden = true; done.hidden = false; done.classList.add('fade-in'); scrollTo(0, 0);
-  document.getElementById('whenText').innerHTML = pretty.replace(/^(\S+)/, '<b>$1</b>') + '<br>alle ' + chosenTime;
 
-  const msg = 'Ho detto sì 🧡 Ci vediamo ' + pretty.charAt(0).toLowerCase() + pretty.slice(1) +
+  document.getElementById('whenText').innerHTML =
+    cap(nice).replace(/^(\S+)/, '<b>$1</b>') + '<br>alle ' + chosenTime;
+  document.getElementById('whenSub').textContent = nice === full ? '' : cap(full);
+
+  const msg = 'Ho detto sì 🧡 Ci vediamo ' + nice + (nice === full ? '' : ', ' + full + ',') +
               ' alle ' + chosenTime + '. (Il tasto “No” non si lasciava premere.)';
   const wa = document.getElementById('wa');
   wa.href = 'https://wa.me/' + PHONE + '?text=' + encodeURIComponent(msg);
